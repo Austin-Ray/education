@@ -16,5 +16,10 @@ CHIP DMux4Way {
     OUT a, b, c, d;
 
     PARTS:
-    // Put your code here:
+    // One of these will have an output of 0.
+    DMux(in=in, sel=sel[1], a=out1, b=out2);
+
+    // Using the 0 output, it will output 0 for one of these.
+    DMux(in=out1, sel=sel[0], a=a, b=b);
+    DMux(in=out2, sel=sel[0], a=c, b=d);
 }
