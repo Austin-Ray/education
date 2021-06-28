@@ -16,5 +16,12 @@ CHIP PC {
     OUT out[16];
 
     PARTS:
-    // Put your code here:
+    Register(in=out3, load=true, out=out, out=regout);
+
+    Inc16(in=regout, out=outinc);
+
+    // Go from top to bottom of if..elseif..else statement.
+    Mux16(a=regout, b=outinc, sel=inc,   out=out1);
+    Mux16(a=out1,   b=in,     sel=load,  out=out2);
+    Mux16(a=out2,   b=false,  sel=reset, out=out3);
 }
