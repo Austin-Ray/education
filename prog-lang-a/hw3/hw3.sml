@@ -89,7 +89,7 @@ fun all_answers f xs =
 val count_wildcards = g (fn _ => 1) (fn _ => 0)
 
 (* 9. b. *)
-val count_wild_and_variable_lengths = g (fn _ => 1) (fn x => String.size x)
+val count_wild_and_variable_lengths = g (fn _ => 1) String.size
 
 (* 9. c. *)
 fun count_some_var(var, pat) = g (fn _ => 0) (fn x => if x = var then 1 else 0) pat
