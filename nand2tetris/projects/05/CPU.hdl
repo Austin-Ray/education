@@ -39,5 +39,45 @@ CHIP CPU {
         pc[15];          // address of next instruction
 
     PARTS:
-    // Put your code here:
+    // Setup A-instruction and C-instruction names for readability.
+    Not(in=instruction[15], out=ains);
+    Not(in=ains, out=cins);
+
+    // Only use ALU output for C-instructions.
+    And(a=cins, b=instruction[5], out=usealuout);
+    Mux16(a=instruction, b=aluout, sel=usealuout, out=out1);
+
+    // Load into A register if it's an A-instruction or ALU output.
+    Or(a=ains, b=usealuout, out=loada);
+    ARegister(in=out1, load=loada, out=aregout, out[0..14]=addressM);
+    
+    Mux16(a=aregout, b=inM, sel=instruction[12], out=out2);
+
+    And(a=cins, b=instruction[4], out=loadd);
+    DRegister(in=aluout, load=loadd, out=dregout);
+
+    ALU(x=dregout, y=out2, zx=instruction[11], nx=instruction[10], zy=instruction[9], ny=instruction[8], f=instruction[7], no=instruction[6], out=aluout, out=outM, zr=zero, ng=neg);
+
+    // If it's a C instruction, save to M.
+    And(a=cins, b=instruction[3], out=writeM);
+
+    // Jump logic
+    Or(a=zero, b=neg, out=zeroorneg);
+    Not(in=zeroorneg, out=pos);
+
+    And(a=instruction[0], b=pos, out=jgt);
+    And(a=instruction[1], b=zero, out=jeq);
+    And(a=instruction[2], b=neg, out=jlt);
+
+    // By comparing these three functions, we check all possible JUMPs.
+    Or(a=jeq, b=jlt, out=jle);
+    Or(a=jle, b=jgt, out=jump);
+
+    // Make sure we only jump with a C-instruction.
+    // A-instructions contain bits in the J spots, which will execute incorrectly.
+    And(a=cins, b=jump, out=loadpc);
+
+    // If there's no JUMP, then increment.
+    Not(in=loadpc, out=incpc);
+    PC(in=aregout, load=loadpc, inc=incpc, reset=reset, out[0..14]=pc);
 }
