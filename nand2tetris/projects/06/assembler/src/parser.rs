@@ -1,7 +1,8 @@
 use lazy_static::lazy_static;
 use regex::Regex;
 
-enum InstructionType {
+#[derive(Copy, Clone)]
+pub enum InstructionType {
     A,
     C,
     L,
@@ -13,7 +14,7 @@ fn is_comment(line: &str) -> bool {
 
 /// Determines if a line has an effect on the program.
 fn functional(line: &str) -> bool {
-    !line.is_empty() || !is_comment(line)
+    !line.is_empty() && !is_comment(line)
 }
 
 fn strip_lines(lines: &Vec<String>) -> Vec<String> {
@@ -57,7 +58,7 @@ impl CInstruction {
     }
 }
 
-struct Parser {
+pub struct Parser {
     lines: Vec<String>,
     current_line_index: usize,
     instruct_type: InstructionType,
@@ -65,23 +66,29 @@ struct Parser {
 }
 
 impl Parser {
-    fn new(lines: Vec<String>) -> Parser {
+    pub fn new(lines: Vec<String>) -> Parser {
         let lines = strip_lines(&lines);
-        Parser {
+        println!("{}", lines.len());
+        let mut parser = Parser {
             lines,
             current_line_index: 0,
             instruct_type: InstructionType::A,
             curr_c_instruct: None,
-        }
+        };
+
+        parser.parse_current_line();
+
+        parser
     }
 
-    fn has_more_lines(&self) -> bool {
+    pub fn has_more_lines(&self) -> bool {
         self.current_line_index < self.lines.len()
     }
 
-    fn advance(&mut self) {
-        self.current_line_index += 1;
-
+    fn parse_current_line(&mut self) {
+        if self.lines.len() - 1 < self.current_line_index {
+            return;
+        }
         let line = self.get_current_line();
         match line.chars().nth(0).unwrap() {
             '@' => {
@@ -99,11 +106,20 @@ impl Parser {
         }
     }
 
+    pub fn advance(&mut self) {
+        self.current_line_index += 1;
+        self.parse_current_line();
+    }
+
+    pub fn instruction_type(&self) -> InstructionType {
+        self.instruct_type
+    }
+
     fn get_current_line(&self) -> String {
         self.lines[self.current_line_index].to_string()
     }
 
-    fn symbol(&self) -> String {
+    pub fn symbol(&self) -> String {
         let line = self.get_current_line();
         let chars = line.chars().collect::<Vec<char>>();
         match self.instruct_type {
@@ -113,21 +129,21 @@ impl Parser {
         }
     }
 
-    fn dest(&self) -> String {
+    pub fn dest(&self) -> String {
         match &self.curr_c_instruct {
             Some(instruct) => instruct.dest.clone(),
             None => "".to_string(),
         }
     }
 
-    fn comp(&self) -> String {
+    pub fn comp(&self) -> String {
         match &self.curr_c_instruct {
             Some(instruct) => instruct.comp.clone(),
             None => "".to_string(),
         }
     }
 
-    fn jump(&self) -> String {
+    pub fn jump(&self) -> String {
         match &self.curr_c_instruct {
             Some(instruct) => instruct.jump.clone(),
             None => "".to_string(),

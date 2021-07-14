@@ -9,3 +9,4 @@ edition = "2018"
 lazy_static = "1.4"
 phf = { version = "0.9", features = ["macros"] }
 regex = "1.5"
+structopt = "0.3"

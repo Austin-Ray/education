@@ -6,10 +6,18 @@ static DEST_MAP: phf::Map<&'static str, &'static str> = phf_map! {
     "M" => "001",
     "D" => "010",
     "DM" => "011",
+    "MD" => "011",
     "A" => "100",
     "AM" => "101",
+    "MA" => "101",
     "AD" => "110",
+    "DA" => "110",
     "ADM"=> "111",
+    "AMD"=> "111",
+    "MAD"=> "111",
+    "MDA"=> "111",
+    "DMA"=> "111",
+    "DAM"=> "111",
 };
 
 static COMP_MAP: phf::Map<&'static str, &'static str> = phf_map! {
@@ -54,15 +62,15 @@ static JUMP_MAP: phf::Map<&'static str, &'static str> = phf_map! {
     "JMP" => "111",
 };
 
-fn dest(dest: &str) -> String {
+pub fn dest(dest: &str) -> String {
     DEST_MAP[dest].to_string()
 }
 
-fn comp(comp: &str) -> String {
+pub fn comp(comp: &str) -> String {
     COMP_MAP[comp].to_string()
 }
 
-fn jump(jump: &str) -> String {
+pub fn jump(jump: &str) -> String {
     JUMP_MAP[jump].to_string()
 }
 
