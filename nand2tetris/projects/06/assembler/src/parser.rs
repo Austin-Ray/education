@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use regex::Regex;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum InstructionType {
     A,
     C,
@@ -17,12 +17,23 @@ fn functional(line: &str) -> bool {
     !line.is_empty() && !is_comment(line)
 }
 
-fn strip_lines(lines: &Vec<String>) -> Vec<String> {
+fn strip_trailing_comment(line: &str) -> String {
+    match line.find("//") {
+        Some(offset) => {
+            let mut new_line = line.to_string();
+            new_line.replace_range(offset.., "");
+            new_line.trim().to_string()
+        }
+        None => line.to_string(),
+    }
+}
+
+fn strip_lines(lines: &[String]) -> Vec<String> {
     lines
-        .into_iter()
+        .iter()
         .map(|x| x.trim())
         .filter(|x| functional(x))
-        .map(|x| x.to_string())
+        .map(|x| strip_trailing_comment(x))
         .collect()
 }
 
@@ -68,7 +79,6 @@ pub struct Parser {
 impl Parser {
     pub fn new(lines: Vec<String>) -> Parser {
         let lines = strip_lines(&lines);
-        println!("{}", lines.len());
         let mut parser = Parser {
             lines,
             current_line_index: 0,
@@ -81,6 +91,11 @@ impl Parser {
         parser
     }
 
+    pub fn reset(&mut self) {
+        self.current_line_index = 0;
+        self.parse_current_line();
+    }
+
     pub fn has_more_lines(&self) -> bool {
         self.current_line_index < self.lines.len()
     }
@@ -90,7 +105,7 @@ impl Parser {
             return;
         }
         let line = self.get_current_line();
-        match line.chars().nth(0).unwrap() {
+        match line.chars().next().unwrap() {
             '@' => {
                 self.instruct_type = InstructionType::A;
                 self.curr_c_instruct = None;
@@ -124,7 +139,7 @@ impl Parser {
         let chars = line.chars().collect::<Vec<char>>();
         match self.instruct_type {
             InstructionType::A => chars[1..].iter().collect::<String>(),
-            InstructionType::L => chars[1..chars.len() - 2].iter().collect::<String>(),
+            InstructionType::L => chars[1..chars.len() - 1].iter().collect::<String>(),
             _ => "".to_string(),
         }
     }
@@ -148,6 +163,10 @@ impl Parser {
             Some(instruct) => instruct.jump.clone(),
             None => "".to_string(),
         }
+    }
+
+    pub fn current_line(&self) -> usize {
+        self.current_line_index
     }
 }
 
