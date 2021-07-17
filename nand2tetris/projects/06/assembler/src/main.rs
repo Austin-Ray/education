@@ -1,4 +1,5 @@
 use assembler::code;
+use assembler::instruction::Instruction;
 use assembler::parser;
 use assembler::symbol;
 use std::fs::File;
@@ -23,20 +24,24 @@ fn main() -> std::io::Result<()> {
     let mut output_path = input_path.clone();
     output_path.set_extension("hack");
 
-    let in_file = File::open(input_path)?;
+    let mut in_file = File::open(input_path.clone())?;
     let out_file = File::create(output_path)?;
 
-    let reader = BufReader::new(in_file);
+    let mut reader = BufReader::new(in_file);
 
-    let lines = reader.lines().map(|l| l.unwrap()).collect::<Vec<String>>();
-
-    let mut parser = parser::Parser::new(lines);
+    let mut parser = parser::Parser::new(reader.lines());
     let mut writer = BufWriter::new(out_file);
     let mut symbol_table = symbol::SymbolTable::new();
 
+    parser.advance();
     init_symbol_table(&mut parser, &mut symbol_table);
 
-    parser.reset();
+    // Reset the parser.
+    in_file = File::open(input_path)?;
+    reader = BufReader::new(in_file);
+    parser = parser::Parser::new(reader.lines());
+
+    parser.advance();
     emit_assembly(&mut parser, &mut symbol_table, &mut writer)?;
 
     writer.flush()?;
@@ -44,14 +49,12 @@ fn main() -> std::io::Result<()> {
 }
 
 fn init_symbol_table(parser: &mut parser::Parser, symbol_table: &mut symbol::SymbolTable) {
-    let mut label_count = 0;
-
     while parser.has_more_lines() {
-        let current_line = parser.current_line();
-        if parser.instruction_type() == parser::InstructionType::L {
-            let parse_symbol = parser.symbol();
-            symbol_table.add_entry(&parse_symbol, current_line - label_count);
-            label_count += 1;
+        let current_line = parser.current_line_number();
+        let curr_inst = parser.get_current_instruction();
+
+        if let Some(Instruction::L(symbol)) = curr_inst {
+            symbol_table.add_entry(symbol, current_line);
         }
 
         parser.advance();
@@ -64,48 +67,41 @@ fn emit_assembly(
     writer: &mut BufWriter<File>,
 ) -> std::io::Result<()> {
     let mut variable_count = 0;
-    while parser.has_more_lines() {
-        let line_out = match parser.instruction_type() {
-            parser::InstructionType::C => {
-                let comp = parser.comp();
-                let dest = parser.dest();
-                let jump = parser.jump();
 
+    while parser.has_more_lines() {
+        let line_out = match parser.get_current_instruction().as_ref().unwrap() {
+            Instruction::C { dest, comp, jump } => {
                 let a_bit = if comp.contains('M') { 1 } else { 0 };
 
-                format!(
+                Some(format!(
                     "111{}{}{}{}",
                     a_bit,
-                    code::comp(&comp),
-                    code::dest(&dest),
-                    code::jump(&jump)
-                )
+                    code::comp(comp),
+                    code::dest(dest.as_ref().unwrap_or(&"".to_string())),
+                    code::jump(jump.as_ref().unwrap_or(&"".to_string()))
+                ))
             }
-            parser::InstructionType::A => {
-                let parse_symbol = parser.symbol();
-                let final_symbol = match parse_symbol.parse::<usize>() {
-                    Ok(address) => address,
-                    Err(_) => {
-                        if !symbol_table.contains(&parse_symbol) {
-                            symbol_table.add_entry(&parse_symbol, 16 + variable_count);
-                            variable_count += 1;
-                        }
+            Instruction::AConst(num) => Some(format!("{:016b}", num)),
+            Instruction::AVar(var) => {
+                if !symbol_table.contains(var) {
+                    symbol_table.add_entry(var, 16 + variable_count);
+                    variable_count += 1;
+                }
 
-                        symbol_table.get_address(&parse_symbol)
-                    }
-                };
-                format!("{:016b}", final_symbol)
+                Some(format!("{:016b}", symbol_table.get_address(var)))
             }
-            parser::InstructionType::L => {
+            Instruction::L(_) => {
                 // Skip over.
-                "".to_string()
+                None
             }
         };
 
-        if !line_out.is_empty() {
-            writeln!(writer, "{}", line_out)?;
+        if let Some(contents) = line_out {
+            writeln!(writer, "{}", contents)?;
         }
+
         parser.advance();
     }
+
     Ok(())
 }

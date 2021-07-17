@@ -1,20 +1,16 @@
+use crate::instruction::Instruction;
 use lazy_static::lazy_static;
 use regex::Regex;
-
-#[derive(Copy, Clone, PartialEq)]
-pub enum InstructionType {
-    A,
-    C,
-    L,
-}
+use std::fs::File;
+use std::io::{BufReader, Lines};
 
 fn is_comment(line: &str) -> bool {
     line.starts_with("//")
 }
 
-/// Determines if a line has an effect on the program.
-fn functional(line: &str) -> bool {
-    !line.is_empty() && !is_comment(line)
+/// Determines if a line has no effect on the program.
+fn superficial(line: &str) -> bool {
+    line.is_empty() || is_comment(line)
 }
 
 fn strip_trailing_comment(line: &str) -> String {
@@ -28,145 +24,95 @@ fn strip_trailing_comment(line: &str) -> String {
     }
 }
 
-fn strip_lines(lines: &[String]) -> Vec<String> {
-    lines
-        .iter()
-        .map(|x| x.trim())
-        .filter(|x| functional(x))
-        .map(|x| strip_trailing_comment(x))
-        .collect()
+fn parse_c_instruction(raw_str: &str) -> Instruction {
+    lazy_static! {
+        static ref RE: Regex = Regex::new("((.*)=)?([^;]*)(;(.*))?").unwrap();
+    }
+
+    let captures = RE.captures(raw_str).unwrap();
+
+    Instruction::C {
+        dest: captures.get(2).map(|cap| cap.as_str().to_string()),
+        comp: match captures.get(3) {
+            Some(cap) => cap.as_str().to_string(),
+            None => "".to_string(),
+        },
+        jump: captures.get(5).map(|cap| cap.as_str().to_string()),
+    }
 }
 
-#[derive(Debug, PartialEq)]
-struct CInstruction {
-    dest: String,
-    comp: String,
-    jump: String,
-}
+fn parse_instruction(line: &str) -> Instruction {
+    let chars = line.chars().collect::<Vec<char>>();
 
-impl CInstruction {
-    fn new(raw_str: &str) -> CInstruction {
-        lazy_static! {
-            static ref RE: Regex = Regex::new("((.*)=)?([^;]*)(;(.*))?").unwrap();
+    match chars[0] {
+        '@' => {
+            let symbol = chars[1..].iter().collect::<String>();
+            match symbol.parse::<i32>() {
+                Ok(num) => Instruction::AConst(num),
+                Err(_) => Instruction::AVar(symbol.to_string()),
+            }
         }
-
-        let captures = RE.captures(raw_str).unwrap();
-
-        CInstruction {
-            dest: match captures.get(2) {
-                Some(cap) => cap.as_str().to_string(),
-                None => "".to_string(),
-            },
-            comp: match captures.get(3) {
-                Some(cap) => cap.as_str().to_string(),
-                None => "".to_string(),
-            },
-            jump: match captures.get(5) {
-                Some(cap) => cap.as_str().to_string(),
-                None => "".to_string(),
-            },
-        }
+        '(' => Instruction::L(chars[1..chars.len() - 1].iter().collect::<String>()),
+        _ => parse_c_instruction(line),
     }
 }
 
 pub struct Parser {
-    lines: Vec<String>,
-    current_line_index: usize,
-    instruct_type: InstructionType,
-    curr_c_instruct: Option<CInstruction>,
+    lines: Lines<BufReader<File>>,
+    curr_line_idx: usize,
+    curr_inst: Option<Instruction>,
+    has_more_lines: bool,
 }
 
 impl Parser {
-    pub fn new(lines: Vec<String>) -> Parser {
-        let lines = strip_lines(&lines);
-        let mut parser = Parser {
+    pub fn new(lines: Lines<BufReader<File>>) -> Parser {
+        Parser {
             lines,
-            current_line_index: 0,
-            instruct_type: InstructionType::A,
-            curr_c_instruct: None,
-        };
-
-        parser.parse_current_line();
-
-        parser
-    }
-
-    pub fn reset(&mut self) {
-        self.current_line_index = 0;
-        self.parse_current_line();
+            curr_line_idx: 0,
+            curr_inst: None,
+            has_more_lines: true,
+        }
     }
 
     pub fn has_more_lines(&self) -> bool {
-        self.current_line_index < self.lines.len()
-    }
-
-    fn parse_current_line(&mut self) {
-        if self.lines.len() - 1 < self.current_line_index {
-            return;
-        }
-        let line = self.get_current_line();
-        match line.chars().next().unwrap() {
-            '@' => {
-                self.instruct_type = InstructionType::A;
-                self.curr_c_instruct = None;
-            }
-            '(' => {
-                self.instruct_type = InstructionType::L;
-                self.curr_c_instruct = None;
-            }
-            _ => {
-                self.instruct_type = InstructionType::C;
-                self.curr_c_instruct = Some(CInstruction::new(&line));
-            }
-        }
+        self.has_more_lines
     }
 
     pub fn advance(&mut self) {
-        self.current_line_index += 1;
-        self.parse_current_line();
-    }
+        let mut invalid = true;
+        let mut curr_line = String::new();
 
-    pub fn instruction_type(&self) -> InstructionType {
-        self.instruct_type
-    }
-
-    fn get_current_line(&self) -> String {
-        self.lines[self.current_line_index].to_string()
-    }
-
-    pub fn symbol(&self) -> String {
-        let line = self.get_current_line();
-        let chars = line.chars().collect::<Vec<char>>();
-        match self.instruct_type {
-            InstructionType::A => chars[1..].iter().collect::<String>(),
-            InstructionType::L => chars[1..chars.len() - 1].iter().collect::<String>(),
-            _ => "".to_string(),
+        while invalid {
+            match self.lines.next() {
+                Some(line) => {
+                    curr_line = line.unwrap();
+                    invalid = superficial(&curr_line);
+                }
+                None => {
+                    self.has_more_lines = false;
+                    self.curr_inst = None;
+                    return;
+                }
+            };
         }
+
+        let clean_line = strip_trailing_comment(&curr_line);
+        let temp_inst = parse_instruction(&clean_line);
+
+        match temp_inst {
+            Instruction::L(_) => {}
+            _ => self.curr_line_idx += 1,
+        };
+
+        self.curr_inst = Some(temp_inst);
     }
 
-    pub fn dest(&self) -> String {
-        match &self.curr_c_instruct {
-            Some(instruct) => instruct.dest.clone(),
-            None => "".to_string(),
-        }
+    pub fn get_current_instruction(&self) -> &Option<Instruction> {
+        &self.curr_inst
     }
 
-    pub fn comp(&self) -> String {
-        match &self.curr_c_instruct {
-            Some(instruct) => instruct.comp.clone(),
-            None => "".to_string(),
-        }
-    }
-
-    pub fn jump(&self) -> String {
-        match &self.curr_c_instruct {
-            Some(instruct) => instruct.jump.clone(),
-            None => "".to_string(),
-        }
-    }
-
-    pub fn current_line(&self) -> usize {
-        self.current_line_index
+    pub fn current_line_number(&self) -> usize {
+        self.curr_line_idx
     }
 }
 
@@ -177,24 +123,24 @@ mod tests {
     #[test]
     fn test_c_instruct() {
         let input = "D=M";
-        let expected = CInstruction {
-            dest: "D".to_string(),
+        let expected = Instruction::C {
+            dest: Some("D".to_string()),
             comp: "M".to_string(),
-            jump: "".to_string(),
+            jump: None,
         };
 
-        let actual = CInstruction::new(input);
+        let actual = parse_instruction(input);
 
         assert_eq!(expected, actual);
 
         let input = "0;JMP";
-        let expected = CInstruction {
-            dest: "".to_string(),
+        let expected = Instruction::C {
+            dest: None,
             comp: "0".to_string(),
-            jump: "JMP".to_string(),
+            jump: Some("JMP".to_string()),
         };
 
-        let actual = CInstruction::new(input);
+        let actual = parse_instruction(input);
 
         assert_eq!(expected, actual);
     }
