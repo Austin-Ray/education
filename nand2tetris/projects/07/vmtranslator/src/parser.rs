@@ -1,4 +1,4 @@
-use crate::command::{Command, Segment};
+use crate::command::{ArithmeticOp, Command, Segment};
 use std::io::{BufRead, Lines};
 
 fn is_comment(line: &str) -> bool {
@@ -21,12 +21,27 @@ fn strip_trailing_comment(line: &str) -> String {
     }
 }
 
-fn parse_seg(seg_str: &str) -> Segment {
+fn parse_seg(seg_str: &str, val: i16) -> Segment {
     match seg_str {
-        "argument" => Segment::Argument,
-        "local" => Segment::Local,
-        "static" => Segment::Static,
-        _ => Segment::Constant(seg_str.parse().unwrap()),
+        "argument" => Segment::Argument(val),
+        "local" => Segment::Local(val),
+        "static" => Segment::Static(val),
+        _ => Segment::Constant(val),
+    }
+}
+
+fn parse_arithmetic_op(line: &str) -> ArithmeticOp {
+    match line {
+        "add" => ArithmeticOp::Add,
+        "sub" => ArithmeticOp::Subtract,
+        "neg" => ArithmeticOp::Negate,
+        "eq" => ArithmeticOp::Equal,
+        "gt" => ArithmeticOp::GreaterThan,
+        "lt" => ArithmeticOp::LessThan,
+        "and" => ArithmeticOp::And,
+        "or" => ArithmeticOp::Or,
+        "not" => ArithmeticOp::Not,
+        _ => ArithmeticOp::Equal,
     }
 }
 
@@ -34,20 +49,20 @@ fn parse_cmd(clean_line: &str) -> Command {
     let tokens = clean_line.split_whitespace().collect::<Vec<&str>>();
 
     match tokens[0] {
-        "push" => Command::Push(parse_seg(tokens[1]), tokens[2].parse().unwrap()),
-        "pop" => Command::Pop(parse_seg(tokens[1]), tokens[2].parse().unwrap()),
-        _ => Command::Arithmetic(clean_line.to_string()),
+        "push" => Command::Push(parse_seg(tokens[1], tokens[2].parse().unwrap())),
+        "pop" => Command::Pop(parse_seg(tokens[1], tokens[2].parse().unwrap())),
+        _ => Command::Arithmetic(parse_arithmetic_op(clean_line)),
     }
 }
 
-struct Parser<T: BufRead> {
+pub struct Parser<T: BufRead> {
     lines: Lines<T>,
     cur_cmd: Option<Command>,
     more_lines: bool,
 }
 
 impl<T: BufRead> Parser<T> {
-    fn new(lines: Lines<T>) -> Parser<T> {
+    pub fn new(lines: Lines<T>) -> Parser<T> {
         let mut parser = Parser {
             lines,
             cur_cmd: None,
@@ -59,11 +74,11 @@ impl<T: BufRead> Parser<T> {
         parser
     }
 
-    fn has_more_lines(&self) -> bool {
+    pub fn has_more_lines(&self) -> bool {
         self.more_lines
     }
 
-    fn advance(&mut self) {
+    pub fn advance(&mut self) {
         let mut invalid = true;
         let mut curr_line = String::new();
 
@@ -87,7 +102,7 @@ impl<T: BufRead> Parser<T> {
         self.cur_cmd = Some(temp_cmd);
     }
 
-    fn command(&self) -> &Option<Command> {
+    pub fn command(&self) -> &Option<Command> {
         &self.cur_cmd
     }
 }
@@ -115,39 +130,39 @@ mod tests {
         let test_cases = vec![
             TestCase {
                 input_str: "add".to_string(),
-                expected: Command::Arithmetic("add".to_string()),
+                expected: Command::Arithmetic(ArithmeticOp::Add),
             },
             TestCase {
                 input_str: "sub".to_string(),
-                expected: Command::Arithmetic("sub".to_string()),
+                expected: Command::Arithmetic(ArithmeticOp::Subtract),
             },
             TestCase {
                 input_str: "neg".to_string(),
-                expected: Command::Arithmetic("neg".to_string()),
+                expected: Command::Arithmetic(ArithmeticOp::Negate),
             },
             TestCase {
                 input_str: "eq".to_string(),
-                expected: Command::Arithmetic("eq".to_string()),
+                expected: Command::Arithmetic(ArithmeticOp::Equal),
             },
             TestCase {
                 input_str: "gt".to_string(),
-                expected: Command::Arithmetic("gt".to_string()),
+                expected: Command::Arithmetic(ArithmeticOp::GreaterThan),
             },
             TestCase {
                 input_str: "lt".to_string(),
-                expected: Command::Arithmetic("lt".to_string()),
+                expected: Command::Arithmetic(ArithmeticOp::LessThan),
             },
             TestCase {
                 input_str: "and".to_string(),
-                expected: Command::Arithmetic("and".to_string()),
+                expected: Command::Arithmetic(ArithmeticOp::And),
             },
             TestCase {
                 input_str: "or".to_string(),
-                expected: Command::Arithmetic("or".to_string()),
+                expected: Command::Arithmetic(ArithmeticOp::Or),
             },
             TestCase {
                 input_str: "not".to_string(),
-                expected: Command::Arithmetic("not".to_string()),
+                expected: Command::Arithmetic(ArithmeticOp::Not),
             },
         ];
 
@@ -159,19 +174,19 @@ mod tests {
         let test_cases = vec![
             TestCase {
                 input_str: "pop argument 0".to_string(),
-                expected: Command::Pop(Segment::Argument, 0),
+                expected: Command::Pop(Segment::Argument(0)),
             },
             TestCase {
                 input_str: "push argument 0".to_string(),
-                expected: Command::Push(Segment::Argument, 0),
+                expected: Command::Push(Segment::Argument(0)),
             },
             TestCase {
                 input_str: "push local 0".to_string(),
-                expected: Command::Push(Segment::Local, 0),
+                expected: Command::Push(Segment::Local(0)),
             },
             TestCase {
-                input_str: "push 0 0".to_string(),
-                expected: Command::Push(Segment::Constant(0), 0),
+                input_str: "push constant 0".to_string(),
+                expected: Command::Push(Segment::Constant(0)),
             },
         ];
 
