@@ -46,7 +46,7 @@
 (define (stream-add-zero s)
     (lambda ()
       (let ([next (s)])
-            (cons (cons 0 (car next)) (lambda () (stream-add-zero (cdr next)))))))
+            (cons (cons 0 (car next)) (stream-add-zero (cdr next))))))
 
 ;; 8.
 (define (cycle-lists xs ys)
@@ -65,7 +65,7 @@
 
 ;; 10.
 (define (cached-assoc xs n)
-  (letrec([cache (vector n #f)]
+  (letrec([cache (make-vector n #f)]
           [pos 0])
     (lambda (x)
       (let ([ans (vector-assoc x cache)])
