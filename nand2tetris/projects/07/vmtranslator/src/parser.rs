@@ -29,6 +29,7 @@ fn parse_seg(seg_str: &str, val: i16) -> Segment {
         "this" => Segment::This(val),
         "that" => Segment::That(val),
         "temp" => Segment::Temp(val),
+        "pointer" => Segment::Pointer(val),
         _ => Segment::Constant(val),
     }
 }

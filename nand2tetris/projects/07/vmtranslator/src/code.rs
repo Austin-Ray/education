@@ -35,8 +35,8 @@ fn segment_to_hack(segment: &Segment) -> String {
         Segment::Static(offset) => segment_with_offset("R16", offset),
         Segment::Temp(offset) => segment_with_offset("R5", offset),
         Segment::Pointer(val) => match val {
-            0 => "THIS".to_string(),
-            1 => "THAT".to_string(),
+            0 => "@THIS".to_string(),
+            1 => "@THAT".to_string(),
             _ => "".to_string(),
         },
         Segment::Constant(val) => format!("@{}", val.to_string()),
