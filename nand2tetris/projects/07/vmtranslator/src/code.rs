@@ -1,22 +1,46 @@
 use crate::command::{ArithmeticOp, Command, Segment};
 use std::io::{BufWriter, Write};
 
+fn segment_offset_template(base_reg: &str, offset: &i16) -> String {
+    [
+        format!("@{}", offset),
+        "D=A".to_string(),
+        format!("@{}", base_reg),
+    ]
+    .join("\n")
+}
+
+fn segment_with_offset(base_reg: &str, offset: &i16) -> String {
+    [
+        segment_offset_template(base_reg, offset),
+        "A=D+A".to_string(),
+    ]
+    .join("\n")
+}
+
+fn segment_with_offset_ptr(base_reg: &str, offset: &i16) -> String {
+    [
+        segment_offset_template(base_reg, offset),
+        "A=D+M".to_string(),
+    ]
+    .join("\n")
+}
+
 fn segment_to_hack(segment: &Segment) -> String {
-    let word = match segment {
-        Segment::Argument(_) => "ARG".to_string(),
-        Segment::Local(_) => "LCL".to_string(),
-        Segment::This(_) => "THIS".to_string(),
-        Segment::That(_) => "THAT".to_string(),
+    match segment {
+        Segment::Argument(offset) => segment_with_offset_ptr("ARG", offset),
+        Segment::Local(offset) => segment_with_offset_ptr("LCL", offset),
+        Segment::This(offset) => segment_with_offset_ptr("THIS", offset),
+        Segment::That(offset) => segment_with_offset_ptr("THAT", offset),
+        Segment::Static(offset) => segment_with_offset("R16", offset),
+        Segment::Temp(offset) => segment_with_offset("R5", offset),
         Segment::Pointer(val) => match val {
             0 => "THIS".to_string(),
             1 => "THAT".to_string(),
             _ => "".to_string(),
         },
-        Segment::Constant(val) => val.to_string(),
-        _ => "".to_string(),
-    };
-
-    format!("@{}", word)
+        Segment::Constant(val) => format!("@{}", val.to_string()),
+    }
 }
 
 fn assembly_header() -> String {
@@ -64,19 +88,21 @@ fn push(segment: &Segment) -> String {
 }
 
 fn pop(segment: &Segment) -> String {
-    let at_load = segment_to_hack(segment);
-    let pop_load = match segment {
-        Segment::Constant(_) => [at_load.as_str(), "D=A"], // Not allowed. Need to clean-up enums definitions.
-        _ => [at_load.as_str(), "M=D"],
-    }
-    .join("\n");
+    let pop_load = segment_to_hack(segment);
 
     [
+        pop_load.as_str(),
+        "D=A",
+        "@R13",
+        "M=D",
         stack_top().as_str(),
         "D=M",
-        pop_load.as_str(),
-        "@SP",
-        "M=M-1",
+        "@R13",
+        "A=M",
+        "M=D",
+        "@R13",
+        "M=0",
+        dec_stack_ptr().as_str(),
     ]
     .join("\n")
 }
@@ -219,7 +245,10 @@ mod tests {
     #[test]
     fn test_push_local() {
         let cmd = [Command::Push(Segment::Local(0))];
-        let expected = ["@LCL", "D=M", "@SP", "A=M", "M=D", "@SP", "M=M+1"].join("\n");
+        let expected = [
+            "@0", "D=A", "@LCL", "A=D+M", "D=M", "@SP", "A=M", "M=D", "@SP", "M=M+1",
+        ]
+        .join("\n");
 
         test_iter(&cmd, Some(&expected));
     }
@@ -227,7 +256,11 @@ mod tests {
     #[test]
     fn test_pop() {
         let cmd = [Command::Pop(Segment::Local(0))];
-        let expected = ["@SP", "A=M", "A=A-1", "D=M", "@LCL", "M=D", "@SP", "M=M-1"].join("\n");
+        let expected = [
+            "@0", "D=A", "@LCL", "A=D+M", "D=A", "@R13", "M=D", "@SP", "A=M", "A=A-1", "D=M",
+            "@R13", "A=M", "M=D", "@R13", "M=0", "@SP", "M=M-1",
+        ]
+        .join("\n");
 
         test_iter(&cmd, Some(&expected));
     }
@@ -386,5 +419,13 @@ mod tests {
         .join("\n");
 
         test_iter(&cmd, Some(&expected));
+    }
+
+    #[test]
+    fn test_this_segment() {
+        let input = Segment::This(6);
+        let expected = ["@6", "D=A", "@THIS", "A=D+M"].join("\n");
+
+        assert_eq!(expected, segment_to_hack(&input));
     }
 }

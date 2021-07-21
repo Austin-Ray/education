@@ -26,6 +26,9 @@ fn parse_seg(seg_str: &str, val: i16) -> Segment {
         "argument" => Segment::Argument(val),
         "local" => Segment::Local(val),
         "static" => Segment::Static(val),
+        "this" => Segment::This(val),
+        "that" => Segment::That(val),
+        "temp" => Segment::Temp(val),
         _ => Segment::Constant(val),
     }
 }
