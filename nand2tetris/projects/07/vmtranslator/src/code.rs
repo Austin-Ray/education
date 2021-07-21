@@ -81,31 +81,73 @@ fn pop(segment: &Segment) -> String {
     .join("\n")
 }
 
-fn add() -> String {
+fn comparator_template(jump: &str, line_idx: usize) -> String {
     [
+        "D=M-D",
+        format!("@_pos_cond_{}", line_idx).as_str(),
+        format!("D;{}", jump).as_str(),
+        format!("@_neg_cond_{}", line_idx).as_str(),
+        "D=0",
+        "0;JMP",
+        format!("(_pos_cond_{})", line_idx).as_str(),
+        "D=-1",
+        format!("(_neg_cond_{})", line_idx).as_str(),
         stack_top().as_str(),
-        "D=M",
-        dec_stack_ptr().as_str(),
-        stack_top().as_str(),
-        "M=M+D",
+        "M=D",
     ]
     .join("\n")
 }
 
-fn arithmetic(op: &ArithmeticOp) -> String {
-    match op {
-        ArithmeticOp::Add => add(),
+fn arithmetic_two_stack_val(op: &ArithmeticOp, line_idx: usize) -> String {
+    let op = match op {
+        ArithmeticOp::Add => "M=M+D".to_string(),
+        ArithmeticOp::Subtract => "M=M-D".to_string(),
+        ArithmeticOp::And => "M=M&D".to_string(),
+        ArithmeticOp::Or => "M=M|D".to_string(),
+        ArithmeticOp::Equal => comparator_template("JEQ", line_idx),
+        ArithmeticOp::GreaterThan => comparator_template("JGT", line_idx),
+        ArithmeticOp::LessThan => comparator_template("JLT", line_idx),
         _ => "".to_string(),
+    };
+
+    [
+        stack_top(),
+        "D=M".to_string(),
+        dec_stack_ptr(),
+        stack_top(),
+        op,
+    ]
+    .join("\n")
+}
+
+fn arithmetic_one_stack_val(op: &ArithmeticOp) -> String {
+    let op = match op {
+        ArithmeticOp::Negate => "M=-M",
+        ArithmeticOp::Not => "M=!M",
+        _ => "",
+    };
+
+    [stack_top().as_str(), op].join("\n")
+}
+
+fn arithmetic(op: &ArithmeticOp, line_idx: usize) -> String {
+    match op {
+        ArithmeticOp::Negate | ArithmeticOp::Not => arithmetic_one_stack_val(op),
+        _ => arithmetic_two_stack_val(op, line_idx),
     }
 }
 
 pub struct CodeWriter<T: Write> {
     writer: BufWriter<T>,
+    cur_line_idx: usize,
 }
 
 impl<T: Write> CodeWriter<T> {
     pub fn new(writer: BufWriter<T>) -> Self {
-        let mut writer = CodeWriter { writer };
+        let mut writer = CodeWriter {
+            writer,
+            cur_line_idx: 0,
+        };
 
         writeln!(writer.writer, "{}", assembly_header()).unwrap();
 
@@ -116,12 +158,13 @@ impl<T: Write> CodeWriter<T> {
         let output = match cmd {
             Command::Push(seg) => push(seg),
             Command::Pop(seg) => pop(seg),
-            Command::Arithmetic(op) => arithmetic(op),
+            Command::Arithmetic(op) => arithmetic(op, self.cur_line_idx),
             _ => "".to_string(),
         };
 
         writeln!(self.writer, "{}", output)?;
         self.writer.flush()?;
+        self.cur_line_idx += 1;
         Ok(())
     }
 
@@ -194,6 +237,151 @@ mod tests {
         let cmd = [Command::Arithmetic(ArithmeticOp::Add)];
         let expected = [
             "@SP", "A=M", "A=A-1", "D=M", "@SP", "M=M-1", "@SP", "A=M", "A=A-1", "M=M+D",
+        ]
+        .join("\n");
+
+        test_iter(&cmd, Some(&expected));
+    }
+
+    #[test]
+    fn test_sub() {
+        let cmd = [Command::Arithmetic(ArithmeticOp::Subtract)];
+        let expected = [
+            "@SP", "A=M", "A=A-1", "D=M", "@SP", "M=M-1", "@SP", "A=M", "A=A-1", "M=M-D",
+        ]
+        .join("\n");
+
+        test_iter(&cmd, Some(&expected));
+    }
+
+    #[test]
+    fn test_and() {
+        let cmd = [Command::Arithmetic(ArithmeticOp::And)];
+        let expected = [
+            "@SP", "A=M", "A=A-1", "D=M", "@SP", "M=M-1", "@SP", "A=M", "A=A-1", "M=M&D",
+        ]
+        .join("\n");
+
+        test_iter(&cmd, Some(&expected));
+    }
+
+    #[test]
+    fn test_or() {
+        let cmd = [Command::Arithmetic(ArithmeticOp::Or)];
+        let expected = [
+            "@SP", "A=M", "A=A-1", "D=M", "@SP", "M=M-1", "@SP", "A=M", "A=A-1", "M=M|D",
+        ]
+        .join("\n");
+
+        test_iter(&cmd, Some(&expected));
+    }
+
+    #[test]
+    fn test_neg() {
+        let cmd = [Command::Arithmetic(ArithmeticOp::Negate)];
+        let expected = ["@SP", "A=M", "A=A-1", "M=-M"].join("\n");
+
+        test_iter(&cmd, Some(&expected));
+    }
+
+    #[test]
+    fn test_not() {
+        let cmd = [Command::Arithmetic(ArithmeticOp::Not)];
+        let expected = ["@SP", "A=M", "A=A-1", "M=!M"].join("\n");
+
+        test_iter(&cmd, Some(&expected));
+    }
+
+    #[test]
+    fn test_eq() {
+        let cmd = [Command::Arithmetic(ArithmeticOp::Equal)];
+        let expected = [
+            "@SP",
+            "A=M",
+            "A=A-1",
+            "D=M",
+            "@SP",
+            "M=M-1",
+            "@SP",
+            "A=M",
+            "A=A-1",
+            "D=M-D",
+            "@_pos_cond_0",
+            "D;JEQ",
+            "@_neg_cond_0",
+            "D=0",
+            "0;JMP",
+            "(_pos_cond_0)",
+            "D=-1",
+            "(_neg_cond_0)",
+            "@SP",
+            "A=M",
+            "A=A-1",
+            "M=D",
+        ]
+        .join("\n");
+
+        test_iter(&cmd, Some(&expected));
+    }
+
+    #[test]
+    fn test_gt() {
+        let cmd = [Command::Arithmetic(ArithmeticOp::GreaterThan)];
+        let expected = [
+            "@SP",
+            "A=M",
+            "A=A-1",
+            "D=M",
+            "@SP",
+            "M=M-1",
+            "@SP",
+            "A=M",
+            "A=A-1",
+            "D=M-D",
+            "@_pos_cond_0",
+            "D;JGT",
+            "@_neg_cond_0",
+            "D=0",
+            "0;JMP",
+            "(_pos_cond_0)",
+            "D=-1",
+            "(_neg_cond_0)",
+            "@SP",
+            "A=M",
+            "A=A-1",
+            "M=D",
+        ]
+        .join("\n");
+
+        test_iter(&cmd, Some(&expected));
+    }
+
+    #[test]
+    fn test_lt() {
+        let cmd = [Command::Arithmetic(ArithmeticOp::LessThan)];
+        let expected = [
+            "@SP",
+            "A=M",
+            "A=A-1",
+            "D=M",
+            "@SP",
+            "M=M-1",
+            "@SP",
+            "A=M",
+            "A=A-1",
+            "D=M-D",
+            "@_pos_cond_0",
+            "D;JLT",
+            "@_neg_cond_0",
+            "D=0",
+            "0;JMP",
+            "(_pos_cond_0)",
+            "D=-1",
+            "(_neg_cond_0)",
+            "@SP",
+            "A=M",
+            "A=A-1",
+            "M=D",
         ]
         .join("\n");
 
