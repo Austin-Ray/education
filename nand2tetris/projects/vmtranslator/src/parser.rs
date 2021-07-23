@@ -55,6 +55,9 @@ fn parse_cmd(clean_line: &str) -> Command {
     match tokens[0] {
         "push" => Command::Push(parse_seg(tokens[1], tokens[2].parse().unwrap())),
         "pop" => Command::Pop(parse_seg(tokens[1], tokens[2].parse().unwrap())),
+        "label" => Command::Label(tokens[1].to_string()),
+        "goto" => Command::Goto(tokens[1].to_string()),
+        "if-goto" => Command::IfGoto(tokens[1].to_string()),
         _ => Command::Arithmetic(parse_arithmetic_op(clean_line)),
     }
 }

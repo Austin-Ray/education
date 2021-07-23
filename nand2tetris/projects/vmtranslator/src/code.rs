@@ -163,6 +163,25 @@ fn arithmetic(op: &ArithmeticOp, line_idx: usize) -> String {
     }
 }
 
+fn emit_label(label: &str) -> String {
+    [format!("({})", label)].join("\n")
+}
+
+fn emit_goto(label: &str) -> String {
+    [&format!("@{}", label), "0;JMP"].join("\n")
+}
+
+fn emit_if_goto(label: &str) -> String {
+    [
+        stack_top(),
+        "D=M".to_string(),
+        dec_stack_ptr(),
+        format!("@{}", label),
+        "D;JNE".to_string(), // Use JNE as -1 is true while 0 is false.
+    ]
+    .join("\n")
+}
+
 pub struct CodeWriter<T: Write> {
     writer: BufWriter<T>,
     cur_line_idx: usize,
@@ -185,6 +204,9 @@ impl<T: Write> CodeWriter<T> {
             Command::Push(seg) => push(seg),
             Command::Pop(seg) => pop(seg),
             Command::Arithmetic(op) => arithmetic(op, self.cur_line_idx),
+            Command::Label(label) => emit_label(label),
+            Command::Goto(label) => emit_goto(label),
+            Command::IfGoto(label) => emit_if_goto(label),
             _ => "".to_string(),
         };
 
