@@ -8,6 +8,8 @@ pub enum Segment {
     That(i16),
     Pointer(i16),
     Temp(i16),
+    Named(String),
+    NamedPtr(String),
 }
 
 #[derive(Debug, PartialEq)]

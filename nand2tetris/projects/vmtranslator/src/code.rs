@@ -40,6 +40,7 @@ fn segment_to_hack(segment: &Segment) -> String {
             _ => "".to_string(),
         },
         Segment::Constant(val) => format!("@{}", val.to_string()),
+        Segment::Named(name) | Segment::NamedPtr(name) => format!("@{}", name),
     }
 }
 
@@ -72,7 +73,7 @@ fn dec_stack_ptr() -> String {
 fn push(segment: &Segment) -> String {
     let at_load = segment_to_hack(segment);
     let push_load = match segment {
-        Segment::Constant(_) => [at_load.as_str(), "D=A"],
+        Segment::Constant(_) | Segment::NamedPtr(_) => [at_load.as_str(), "D=A"],
         _ => [at_load.as_str(), "D=M"],
     }
     .join("\n");
@@ -182,6 +183,65 @@ fn emit_if_goto(label: &str) -> String {
     .join("\n")
 }
 
+fn emit_func(func: &str, arg_cnt: &usize) -> String {
+    [
+        emit_label(func),
+        (0..*arg_cnt)
+            .map(|_| push(&Segment::Constant(0)))
+            .collect::<Vec<String>>()
+            .join("\n"),
+    ]
+    .join("\n")
+}
+
+fn frame_sub(dest: &str, offset: usize) -> String {
+    [
+        "@R14",
+        "D=M",
+        format!("@{}", offset).as_str(),
+        "A=D-A",
+        "D=M",
+        format!("@{}", dest).as_str(),
+        "M=D",
+    ]
+    .join("\n")
+}
+
+fn emit_return() -> String {
+    let frame = "R14";
+    let ret_addr = "R15";
+
+    [
+        // frame = LCL
+        "@LCL",
+        "D=M",
+        &format!("@{}", frame),
+        "M=D",
+        // retAddr = *(frame - 5)
+        &frame_sub(ret_addr, 5),
+        // *ARG = pop()
+        &pop(&Segment::Argument(0)),
+        // SP = ARG+1
+        "@ARG",
+        "D=M",
+        "@SP",
+        "M=D+1",
+        // THAT = *(frame - 1)
+        &frame_sub("THAT", 1),
+        // THIS = *(frame - 2)
+        &frame_sub("THIS", 2),
+        // ARG = *(frame - 3)
+        &frame_sub("ARG", 3),
+        // LCL = *(frame - 4)
+        &frame_sub("LCL", 4),
+        // goto retAddr
+        &format!("@{}", ret_addr),
+        "A=M",
+        "0;JMP",
+    ]
+    .join("\n")
+}
+
 pub struct CodeWriter<T: Write> {
     writer: BufWriter<T>,
     cur_line_idx: usize,
@@ -207,6 +267,8 @@ impl<T: Write> CodeWriter<T> {
             Command::Label(label) => emit_label(label),
             Command::Goto(label) => emit_goto(label),
             Command::IfGoto(label) => emit_if_goto(label),
+            Command::Function(func, arg_cnt) => emit_func(func, arg_cnt),
+            Command::Return => emit_return(),
             _ => "".to_string(),
         };
 
