@@ -18,11 +18,21 @@
 (struct isaunit (e) #:transparent) ;; evaluate to 1 if e is unit else 0
 
 ;; a closure is not in "source" programs but /is/ a MUPL value; it is what functions evaluate to
-(struct closure (env fun) #:transparent) 
+(struct closure (env fun) #:transparent)
 
 ;; Problem 1
 
-;; CHANGE (put your solutions here)
+;; a.
+(define (racketlist->mupllist xs)
+  (if (null? xs)
+      (aunit)
+      (apair (car xs) (racketlist->mupllist (cdr xs)))))
+
+;; b.
+(define (mupllist->racketlist xs)
+  (if (aunit? xs)
+      null
+      (cons (apair-e1 xs) (mupllist->racketlist (apair-e2 xs)))))
 
 ;; Problem 2
 
@@ -32,6 +42,12 @@
   (cond [(null? env) (error "unbound variable during evaluation" str)]
         [(equal? (car (car env)) str) (cdr (car env))]
         [#t (envlookup (cdr env) str)]))
+
+;; Creates new env with additional value. 
+(define (env-add env name val)
+  (if name
+      (cons (cons name val) env)
+      env))
 
 ;; Do NOT change the two cases given to you.  
 ;; DO add more cases for other kinds of MUPL expressions.
@@ -49,6 +65,51 @@
                        (int-num v2)))
                (error "MUPL addition applied to non-number")))]
         ;; CHANGE add more cases here
+        [(int? e) e]
+        [(closure? e) e]
+        [(aunit? e) e]
+        [(fun? e) (closure env e)]
+        [(ifgreater? e)
+         (let ([v1 (eval-under-env (ifgreater-e1 e) env)]
+               [v2 (eval-under-env (ifgreater-e2 e) env)])
+           (if (and (int? v1)
+                    (int? v2))
+               (if (> (int-num v1) (int-num v2))
+                   (eval-under-env (ifgreater-e3 e) env)
+                   (eval-under-env (ifgreater-e4 e) env))
+               (error "MUPL greater than applied to non-number")))]
+        [(mlet? e)
+         (letrec ([v (eval-under-env (mlet-e e) env)]
+                  [new-env (env-add env (mlet-var e) v)])
+           (eval-under-env (mlet-body e) new-env))]
+        [(call? e)
+         (letrec ([v1 (eval-under-env (call-funexp e) env)]
+                  [v2 (eval-under-env (call-actual e) env)])
+           (if (closure? v1)
+               (letrec ([c-fn (closure-fun v1)]
+                        [fn-name (fun-nameopt c-fn)]
+                        [fn-formal (fun-formal c-fn)]
+                        [fn-body (fun-body c-fn)]
+                        [c-env (env-add (closure-env v1) fn-formal v2)]
+                        [final-env (env-add c-env fn-name v1)])
+                 (eval-under-env fn-body final-env))
+               (error "MUPL call requires closure as first argument.")))]
+        [(apair? e)
+         (letrec ([e1 (eval-under-env (apair-e1 e) env)]
+                  [e2 (eval-under-env (apair-e2 e) env)])
+           (apair e1 e2))]
+        [(fst? e) (let ([pair (eval-under-env (fst-e e) env)])
+                    (if (apair? pair)
+                        (apair-e1 pair)
+                        (error "MUPL fst requires apair")))]
+        [(snd? e) (let ([pair (eval-under-env (snd-e e) env)])
+                    (if (apair? pair)
+                        (apair-e2 pair)
+                        (error "MUPL snd requires apair")))]
+        [(isaunit? e)
+           (if (aunit? (eval-under-env (isaunit-e e) env))
+               (int 1)
+               (int 0))]
         [#t (error (format "bad MUPL expression: ~v" e))]))
 
 ;; Do NOT change
@@ -57,19 +118,31 @@
         
 ;; Problem 3
 
-(define (ifaunit e1 e2 e3) "CHANGE")
+(define (ifaunit e1 e2 e3) (ifgreater (isaunit e1) (int 0) e2 e3))
 
-(define (mlet* lstlst e2) "CHANGE")
+(define (mlet* lstlst e2)
+  (if (null? lstlst)
+      e2
+      (letrec ([elem (car lstlst)])
+       (mlet (car elem) (cdr elem) (mlet* (cdr lstlst) e2)))))
 
-(define (ifeq e1 e2 e3 e4) "CHANGE")
+(define (ifeq e1 e2 e3 e4) (mlet* (list (cons "e1" e1) (cons "e2" e2)) (ifgreater (var "e1") (var "e2") e4 (ifgreater (var "e2") (var "e1") e4 e3))))
 
 ;; Problem 4
 
-(define mupl-map "CHANGE")
+(define mupl-map
+  (fun #f "f"
+       (fun "mupl-map-xs" "xs"
+            (ifaunit (var "xs")
+                     (aunit)
+                     (apair (call (var "f") (fst (var "xs")))
+                            (call (var "mupl-map-xs") (snd (var "xs"))))))))
 
 (define mupl-mapAddN 
   (mlet "map" mupl-map
-        "CHANGE (notice map is now in MUPL scope)"))
+        (fun #f "i"
+             (fun #f "xs"
+                  (call (call (var "map") (fun #f "x" (add (var "x") (var "i")))) (var "xs"))))))
 
 ;; Challenge Problem
 
