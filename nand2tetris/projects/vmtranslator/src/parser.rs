@@ -21,11 +21,11 @@ fn strip_trailing_comment(line: &str) -> String {
     }
 }
 
-fn parse_seg(seg_str: &str, val: i16) -> Segment {
+fn parse_seg(seg_str: &str, val: i16, file_name: &str) -> Segment {
     match seg_str {
         "argument" => Segment::Argument(val),
         "local" => Segment::Local(val),
-        "static" => Segment::Static(val),
+        "static" => Segment::Static(file_name.to_string(), val),
         "this" => Segment::This(val),
         "that" => Segment::That(val),
         "temp" => Segment::Temp(val),
@@ -49,15 +49,16 @@ fn parse_arithmetic_op(line: &str) -> ArithmeticOp {
     }
 }
 
-fn parse_cmd(clean_line: &str) -> Command {
+fn parse_cmd(clean_line: &str, file_name: &str) -> Command {
     let tokens = clean_line.split_whitespace().collect::<Vec<&str>>();
 
     match tokens[0] {
-        "push" => Command::Push(parse_seg(tokens[1], tokens[2].parse().unwrap())),
-        "pop" => Command::Pop(parse_seg(tokens[1], tokens[2].parse().unwrap())),
+        "push" => Command::Push(parse_seg(tokens[1], tokens[2].parse().unwrap(), file_name)),
+        "pop" => Command::Pop(parse_seg(tokens[1], tokens[2].parse().unwrap(), file_name)),
         "label" => Command::Label(tokens[1].to_string()),
         "goto" => Command::Goto(tokens[1].to_string()),
         "if-goto" => Command::IfGoto(tokens[1].to_string()),
+        "call" => Command::Call(tokens[1].to_string(), tokens[2].parse().unwrap()),
         "function" => Command::Function(tokens[1].to_string(), tokens[2].parse().unwrap()),
         "return" => Command::Return,
         _ => Command::Arithmetic(parse_arithmetic_op(clean_line)),
@@ -68,14 +69,16 @@ pub struct Parser<T: BufRead> {
     lines: Lines<T>,
     cur_cmd: Option<Command>,
     more_lines: bool,
+    file_name: String,
 }
 
 impl<T: BufRead> Parser<T> {
-    pub fn new(lines: Lines<T>) -> Parser<T> {
+    pub fn new(lines: Lines<T>, file: String) -> Parser<T> {
         let mut parser = Parser {
             lines,
             cur_cmd: None,
             more_lines: true,
+            file_name: file,
         };
 
         parser.advance();
@@ -106,7 +109,7 @@ impl<T: BufRead> Parser<T> {
         }
 
         let clean_line = strip_trailing_comment(&curr_line);
-        let temp_cmd = parse_cmd(&clean_line);
+        let temp_cmd = parse_cmd(&clean_line, &self.file_name);
 
         self.cur_cmd = Some(temp_cmd);
     }
@@ -129,7 +132,7 @@ mod tests {
     fn test_iter(cases: &[TestCase]) {
         for test_case in cases {
             let reader = BufReader::new(test_case.input_str.as_bytes());
-            let parser = Parser::new(reader.lines());
+            let parser = Parser::new(reader.lines(), "test".to_string());
             assert_eq!(&test_case.expected, parser.command().as_ref().unwrap())
         }
     }

@@ -2,7 +2,7 @@
 pub enum Segment {
     Argument(i16),
     Local(i16),
-    Static(i16),
+    Static(String, i16),
     Constant(i16),
     This(i16),
     That(i16),
