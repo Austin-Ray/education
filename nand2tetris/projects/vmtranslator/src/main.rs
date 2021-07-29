@@ -49,7 +49,10 @@ fn main() -> std::io::Result<()> {
         writer.on_new_file();
         let in_file = File::open(file.clone())?;
         let reader = BufReader::new(in_file);
-        let mut parser = parser::Parser::new(reader.lines(), file.to_str().unwrap().to_string());
+        let mut parser = parser::Parser::new(
+            reader.lines(),
+            file.file_stem().unwrap().to_str().unwrap().to_string(),
+        );
 
         while parser.has_more_lines() {
             let cmd = parser.command().as_ref().unwrap();
