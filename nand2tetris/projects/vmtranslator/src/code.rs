@@ -75,14 +75,21 @@ fn segment_to_hack(segment: &Segment) -> Vec<Instruction> {
 }
 
 fn assembly_header() -> Vec<Instruction> {
-    vec![
+    let mut instructs = vec![
         a_const(&256),
         addr_assign("D", "A"),
         a_sym("SP"),
         addr_assign("M", "D"),
-        a_sym("Sys.init"),
-        jmp_no_cond(),
-    ]
+    ];
+
+    instructs.append(&mut emit_call(
+        "Sys.init",
+        &0,
+        &0,
+        &Some("_internal_vm_translator".to_string()),
+    ));
+
+    instructs
 }
 
 fn assembly_footer() -> Vec<Instruction> {
